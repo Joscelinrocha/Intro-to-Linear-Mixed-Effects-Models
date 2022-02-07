@@ -3,13 +3,13 @@ title: "Intro to lmer"
 author: "Joscelin Rocha-Hidalgo"
 date: "`r Sys.Date()`"
 output:
+  pdf_document:
+    toc: yes
+    toc_depth: 6
   html_document:
     toc: yes
     toc_depth: '6'
     df_print: paged
-  pdf_document:
-    toc: yes
-    toc_depth: 6
 subtitle: Document Adapted from Brown, V. A. (2021).
 ---
 
@@ -426,3 +426,17 @@ Save the figure
 ```{r}
 ggsave("Figures/random_slopes.png", units = "in", width = 9, height = 6, dpi = 300)
 ```
+
+
+### Resources  to common questions:
+
+1. How many cluster do I need to fit a Mixed Effects model?
+* Video by CenterStat: https://www.youtube.com/watch?v=aKXcayBhbMc
+* Review by McNeish & Stapleton (2016)
+1. Intraclass Correlation:
+* If ICC = 0 then there are no between-group differences to produce dependence. The nesting of the data is irrelevant.
+* - This is the assumption of GLM
+* - Multilevel model reduces to GLM when ICC = 0.
+* If ICC = 1 then all differences are between-groups differences and individuals within a group have identical scores.
+* ICCs of .1 to .3 are common for individuals within groups.
+
