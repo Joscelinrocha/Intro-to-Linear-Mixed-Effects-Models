@@ -38,7 +38,7 @@ library(performance)
 
 Load data, and name that object "rt_data"
 ```{r}
-rt_data <- read_csv("data/rt_dummy_data.csv")
+rt_data <- read_csv("Data/rt_dummy_data.csv")
 ```
 
 View the first six rows of the data frame
@@ -128,7 +128,7 @@ To report the findings described in the example above, you could write:
 
 Load the data. Note that it's actually the same as the original data frame, but it has an extra column containing SNR. We could have been dealing with this data frame the whole time, but having an extra variable that we're not using can be confusing, so I waited to introduce it until now. 
 ```{r}
-rt_data_interaction <- read_csv("data/rt_dummy_data_interaction.csv")
+rt_data_interaction <- read_csv("Data/rt_dummy_data_interaction.csv")
 ```
 
 Dummy code modality and SNR so that audio-only and easy are the reference levels
@@ -225,7 +225,7 @@ Looks ok! We'll stick with this one.
 
 Load data and name it acc_data
 ```{r}
-acc_data <- read_csv("acc_dummy_data.csv")
+acc_data <- read_csv("Data/acc_dummy_data.csv")
 ```
 
 Dummy code modality with audio-only as the reference level
@@ -238,6 +238,7 @@ Make PID and stim factors
 acc_data$PID <- as.factor(acc_data$PID)
 acc_data$stim <- as.factor(acc_data$stim)
 ```
+### Full Model
 
 Build a full model
 ```{r}
@@ -247,11 +248,14 @@ acc_full.mod <- glmer(acc ~ 1 + modality +
                       family = binomial)
 ```
 
+### Summary
+
 Check random effects output
 ```{r}
 summary(acc_full.mod)
 ```
 
+### Reduced Model
 Build a reduced model lacking the fixed effect for modality
 ```{r}
 acc_reduced.mod <- glmer(acc ~ 1 + 
@@ -259,6 +263,8 @@ acc_reduced.mod <- glmer(acc ~ 1 +
                          data = acc_data, 
                          family = binomial)
 ```
+
+### Likelihood Ratio Test
 
 Conduct a likelihood ratio test to see if the effect of block (audio-only versus audiovisual) is significant
 ```{r}
@@ -269,7 +275,7 @@ anova(acc_reduced.mod, acc_full.mod)
 
 Load data
 ```{r}
-figuredata <- read_csv("figure_data.csv")
+figuredata <- read_csv("Data/figure_data.csv")
 ```
 
 Make PID a factor
@@ -311,7 +317,7 @@ ggplot(figuredata, aes(x = xvar, y = yvar)) +
 
 Save the figure
 ```{r}
-ggsave("fixed_effects_plot.png", units = "in", width = 9, height = 6, dpi = 300)
+ggsave("Figures/fixed_effects_plot.png", units = "in", width = 9, height = 6, dpi = 300)
 ```
 
 ## Random intercepts plot 
@@ -362,7 +368,7 @@ ggplot(figuredata, aes(x = xvar, y = yvar)) +
 
 Save the figure
 ```{r}
-ggsave("random_intercepts.png", units = "in", width = 9, height = 6, dpi = 300)
+ggsave("Figures/random_intercepts.png", units = "in", width = 9, height = 6, dpi = 300)
 ```
 
 ## Random intercepts and slopes plot
@@ -409,5 +415,5 @@ ggplot(figuredata, aes(x = xvar, y = yvar)) +
 
 Save the figure
 ```{r}
-ggsave("random_slopes.png", units = "in", width = 9, height = 6, dpi = 300)
+ggsave("Figures/random_slopes.png", units = "in", width = 9, height = 6, dpi = 300)
 ```
