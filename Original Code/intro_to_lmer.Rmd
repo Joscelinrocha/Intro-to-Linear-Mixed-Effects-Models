@@ -1,0 +1,393 @@
+---
+title: "intro_to_lmer"
+author: "Violet Brown"
+date: "August 5, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This code accompanies "An introduction to mixed effects modeling" 
+
+# Preliminaries 
+
+Install packages if they aren't already installed
+```{r}
+if (!("lme4" %in% installed.packages())) install.packages("lme4")
+if (!("tidyverse" %in% installed.packages())) install.packages("tidyverse")
+if (!("afex" %in% installed.packages())) install.packages("afex")
+```
+
+Load packages 
+```{r}
+library(lme4)
+library(tidyverse)
+library(afex)
+```
+
+Load data, and name that object "rt_data"
+```{r}
+rt_data <- read_csv("rt_dummy_data.csv")
+```
+
+View the first six rows of the data frame
+```{r}
+head(rt_data)
+```
+
+Create an aggregated version that would be used in an ANOVA, and view the first six rows of that data frame
+```{r}
+ANOVA_data <- rt_data %>% 
+  group_by(PID, modality) %>% 
+  dplyr::summarise(RT = mean(RT))
+head(ANOVA_data)
+```
+
+# Testing for an effect of modality on response time
+
+Dummy code modality so that audio-only is the reference level
+```{r}
+rt_data$modality <- ifelse(rt_data$modality == "Audio-only", 0, 1)
+```
+
+Build a full model
+```{r}
+rt_full.mod <- lmer(RT ~ 1 + modality + 
+                      (1 + modality|PID) + (1 + modality|stim), 
+                    data = rt_data)
+```
+
+This model failed to converge. The first thing we'll do is try the all_fit() function from the afex package to look for an optimizer that works.
+```{r}
+all_fit(rt_full.mod)
+```
+
+The bobyqa optimizer should work.
+```{r}
+rt_full.mod <- lmer(RT ~ 1 + modality + 
+                      (1 + modality|PID) + (1 + modality|stim), 
+                    data = rt_data, 
+                    control = lmerControl(optimizer = "bobyqa"))
+```
+
+Run the all_fit() function from the afex() package for demonstration purposes
+```{r}
+all_fit(rt_full.mod)
+```
+
+Build a reduced model that doesn't contained the fixed effect of modality, but is otherwise identical to the full model (including the random effects structure and control parameter)
+```{r}
+rt_reduced.mod <- lmer(RT ~ 1 + 
+                         (1 + modality|stim) + (1 + modality|PID), 
+                       data = rt_data, 
+                       control = lmerControl(optimizer = "bobyqa"))
+```
+
+Test for an effect of modality via a likelihood ratio test
+```{r}
+anova(rt_reduced.mod, rt_full.mod)
+```
+
+Use the mixed() function from the afex package for demonstration purposes (this appears in the Likelihood Ratio Tests portion of the paper)
+```{r}
+mixed(RT ~ 1 + modality + 
+         (1 + modality|PID) + (1 + modality|stim), 
+       data = rt_data, 
+       control = lmerControl(optimizer = "bobyqa"), 
+       method = 'LRT')
+```
+
+View summary output
+```{r}
+summary(rt_full.mod) 
+```
+
+The parameter estimate for the effect of condition is 83.18, which means that in this dummy data, participants are on average 83 ms slower in the audiovisual relative to the audio-only condition.
+
+Run the coef() function to examine individual participant and item intercept and slope estimates
+```{r}
+coef(rt_full.mod)
+```
+
+# Testing for an interaction between modality and SNR
+
+Load the data. Note that it's actually the same as the original data frame, but it has an extra column containing SNR. We could have been dealing with this data frame the whole time, but having an extra variable that we're not using can be confusing, so I waited to introduce it until now. 
+```{r}
+rt_data_interaction <- read_csv("rt_dummy_data_interaction.csv")
+```
+
+Dummy code modality and SNR so that audio-only and easy are the reference levels
+```{r}
+rt_data_interaction$modality <- ifelse(rt_data_interaction$modality == "Audio-only", 0, 1)
+rt_data_interaction$SNR <- ifelse(rt_data_interaction$SNR == "Easy", 0, 1)
+```
+
+Build the full model, which includes all by-participant and by-item random effects except the interaction between modality and SNR, which was not included because in my experience models with random effects structures that complex will almost certainly encounter estimation issues for this kind of data and we will need to simplify the random effects structure anyway. I also want to avoid having overly complex random effects structures because this can limit power (see Matuschek et al., 2017).  
+
+```{r}
+rt_int.mod <- lmer(RT ~ 1 + modality + SNR + modality:SNR +
+                     (1 + modality + SNR|stim) + (1 + modality + SNR|PID), 
+                   data = rt_data_interaction)
+```
+
+This model produced a singular fit, indicating that there are some problems with estimation going on. We'll try using the all_fit() function from the afex package to see if another optimizer will work.
+```{r}
+all_fit(rt_int.mod)
+```
+
+All of these produced a singular fit, and the estimation issues seem to be coming from the item random effects. Given that all the optimizers produced very similar estimates for fixed and random effects, and the item random effects (particularly the slopes) are contributing very little to the total variance using all of the optimizers, we'll try removing the by-item random slopes for modality or SNR, and testing those against the full model via likelihood ratio tests to see if we can remove those (refit = FALSE because we are testing random effects, not fixed effects).
+```{r}
+rt_int.mod <- lmer(RT ~ 1 + modality + SNR + modality:SNR +
+                     (1 + modality + SNR|stim) + (1 + modality + SNR|PID), 
+                   data = rt_data_interaction)
+rt_int_no_modality_stim.mod <- lmer(RT ~ 1 + modality + SNR + modality:SNR +
+                     (1 + SNR|stim) + (1 + modality + SNR|PID), 
+                   data = rt_data_interaction)
+rt_int_no_SNR_stim.mod <- lmer(RT ~ 1 + modality + SNR + modality:SNR +
+                     (1 + modality|stim) + (1 + modality + SNR|PID), 
+                   data = rt_data_interaction)
+
+anova(rt_int_no_modality_stim.mod, rt_int.mod, refit = FALSE)
+anova(rt_int_no_SNR_stim.mod, rt_int.mod, refit = FALSE)
+```
+
+It looks like the model with both random slopes does not differ from either reduced model, so we'll start by removing the random slope that is contributing less to the total variance according to all previous models (the by-item random slope for SNR). 
+```{r}
+rt_int.mod <- lmer(RT ~ 1 + modality + SNR + modality:SNR +
+                     (1 + modality|stim) + (1 + modality + SNR|PID), 
+                   data = rt_data_interaction)
+```
+
+This one produced a singular fit (we already knew that would happen because we built the same model above), so let's try all_fit()
+```{r}
+all_fit(rt_int.mod)
+```
+
+The Nelder-Mead optimizer might work, so we'll try that one
+```{r}
+rt_int.mod <- lmer(RT ~ 1 + modality + SNR + modality:SNR +
+                     (1 + modality|stim) + (1 + modality + SNR|PID), 
+                   data = rt_data_interaction,
+                   control = lmerControl(optimizer = 'Nelder_Mead'))
+```
+
+That led to convergence issues. It looks like all of these optimizers lead to estimation issues, so we'll try removing the correlation between the random intercept for stimulus and the by-stimulus random slope for modality (this is ok in this situation because we aren't actually interested in that correlation).
+```{r}
+rt_int.mod <- lmer(RT ~ 1 + modality + SNR + modality:SNR +
+                     (0 + modality|stim) + (1|stim) + (1 + modality + SNR|PID), 
+                   data = rt_data_interaction)
+```
+
+This led to a convergence warning, so we'll try all_fit() again
+```{r}
+all_fit(rt_int.mod)
+```
+
+The bobyqa optimizer might work, so we'll try that
+```{r}
+rt_int.mod <- lmer(RT ~ 1 + modality + SNR + modality:SNR +
+                     (0 + modality|stim) + (1|stim) + (1 + modality + SNR|PID), 
+                   data = rt_data_interaction,
+                   control = lmerControl(optimizer = 'bobyqa'))
+```
+
+Looks like that converged, but let's examine the random effects output to make sure estimation went smoothly.
+
+```{r}
+summary(rt_int.mod)
+```
+
+Looks ok! We'll stick with this one.
+
+# Testing for an effect of modality on intelligibility (binomial) 
+
+Load data and name it acc_data
+```{r}
+acc_data <- read_csv("acc_dummy_data.csv")
+```
+
+Dummy code modality with audio-only as the reference level
+```{r}
+acc_data$modality <- ifelse(acc_data$modality == "Audio-only", 0, 1)
+```
+
+Make PID and stim factors
+```{r}
+acc_data$PID <- as.factor(acc_data$PID)
+acc_data$stim <- as.factor(acc_data$stim)
+```
+
+Build a full model
+```{r}
+acc_full.mod <- glmer(acc ~ 1 + modality + 
+                        (1 + modality|PID) + (1 + modality|stim), 
+                      data = acc_data, 
+                      family = binomial)
+```
+
+Check random effects output
+```{r}
+summary(acc_full.mod)
+```
+
+Build a reduced model lacking the fixed effect for modality
+```{r}
+acc_reduced.mod <- glmer(acc ~ 1 + 
+                           (1 + modality|PID) + (1 + modality|stim), 
+                         data = acc_data, 
+                         family = binomial)
+```
+
+Conduct a likelihood ratio test to see if the effect of block (audio-only versus audiovisual) is significant
+```{r}
+anova(acc_reduced.mod, acc_full.mod)
+```
+
+# Fixed-effects only, random intercepts, and random slopes plots
+
+Load data
+```{r}
+figuredata <- read_csv("figure_data.csv")
+```
+
+Make PID a factor
+```{r}
+figuredata$PID <- as.factor(figuredata$PID)
+```
+
+## Fixed-effects only regression plot
+Build regression model and view the summary output to look at the residuals
+```{r}
+ols.mod <- lm(yvar ~ xvar, data = figuredata)
+
+summary(ols.mod)
+```
+
+Build a fixed effects only plot
+```{r}
+ggplot(figuredata, aes(x = xvar, y = yvar)) + 
+  stat_smooth(method = lm, se = FALSE, linetype = "solid", 
+              color = "black", size = .6) +
+  geom_point(aes(shape = PID), size = 3.25, color = "grey70") +
+  scale_shape_manual(values = c(15, 16, 17, 18)) + 
+  geom_segment(aes(x = xvar, xend = xvar, 
+                   y = yvar, yend = fitted(ols.mod)), 
+               color = "grey70") +
+  scale_y_continuous(expand = c(0, 0), breaks = c(0, 750, 1500, 2250, 3000), 
+                     limits = c(0, 2600)) +
+  scale_x_continuous(expand = c(0, 0), breaks = c(0, 2, 4, 6, 8, 10), 
+                     limits = c(-0.5, 10.5)) +
+  theme(panel.background = element_blank(),         
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA),
+        legend.position = "none",
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14)) +
+  labs (x = "Word Difficulty", y = "Response Time") 
+```
+
+Save the figure
+```{r}
+ggsave("fixed_effects_plot.png", units = "in", width = 9, height = 6, dpi = 300)
+```
+
+## Random intercepts plot 
+
+Build the model with random intercepts and view the summary output to look at the residuals
+```{r}
+random_intercepts.mod <- lmer(yvar ~ 1 + xvar + (1|PID), data = figuredata)
+
+summary(random_intercepts.mod)
+```
+
+Extract the fixed effects estimates for the intercept and slope
+```{r}
+model_intercept <- as.numeric(fixef(random_intercepts.mod)[1])
+model_slope <- as.numeric(fixef(random_intercepts.mod)[2])
+```
+
+Extract the individual participant intercepts for this model and add it to the data frame
+```{r}
+figuredata$intercepts <- rep(coef(random_intercepts.mod)$PID[,1], each = 4)
+```
+
+Build random intercepts plot
+```{r}
+ggplot(figuredata, aes(x = xvar, y = yvar)) + 
+  geom_abline(slope = model_slope, intercept = model_intercept, 
+              linetype = "solid", color = "black", size = 1) +
+  geom_abline(mapping = aes(slope = model_slope, intercept = intercepts), 
+              linetype = "dashed", color = "grey70", size = .4) + 
+  geom_point(aes(shape = PID), size = 3.25, color = "grey70") + 
+  scale_shape_manual(values = c(15, 16, 17, 18)) + 
+  geom_segment(aes(x = xvar, xend = xvar, 
+                   y = yvar, yend = fitted(random_intercepts.mod)),
+               color = "grey70") +
+  scale_y_continuous(expand = c(0, 0), breaks = c(0, 500, 1000, 1500, 2000, 2500), 
+                     limits = c(0, 2600)) +
+  scale_x_continuous(expand = c(0, 0), breaks = c(0, 2, 4, 6, 8, 10), 
+                     limits = c(-0.5, 10.5)) +
+  theme(panel.background = element_blank(),         
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA),
+        legend.position = "none",
+        axis.text = element_text(size = 14), 
+        axis.title = element_text(size = 14)) +
+  labs (x = "Word Difficulty", y = "Response Time") 
+```
+
+Save the figure
+```{r}
+ggsave("random_intercepts.png", units = "in", width = 9, height = 6, dpi = 300)
+```
+
+## Random intercepts and slopes plot
+
+Build the model with random intercepts and slopes and view the summary output to look at the residuals
+```{r}
+random_slopes.mod <- lmer(yvar ~ 1 + xvar + (1 + xvar|PID), data = figuredata)
+
+summary(random_slopes.mod)
+```
+
+Extract the individual participant intercepts and slopes from this model and add them to the data frame
+```{r}
+figuredata$intercepts2 <- rep(coef(random_slopes.mod)$PID[,1], each = 4)
+figuredata$slopes <- rep(coef(random_slopes.mod)$PID[,2], each = 4)
+```
+
+Build plot
+```{r}
+ggplot(figuredata, aes(x = xvar, y = yvar)) + 
+  geom_abline(slope = model_slope, intercept = model_intercept, 
+              linetype = "solid", color = "black", size = 1) + 
+  geom_abline(mapping = aes(slope = slopes, 
+                            intercept = intercepts2, linetype = PID), 
+              linetype = "dashed", color = "grey70", size = .4) +
+  geom_point(aes(shape = PID), size = 3.25, color = "grey70") + 
+  scale_shape_manual(values = c(15, 16, 17, 18)) + 
+  geom_segment(aes(x = xvar, xend = xvar, 
+                   y = yvar, yend = fitted(random_slopes.mod)), 
+               color = "grey70") +
+  scale_y_continuous(expand = c(0, 0), breaks = c(0, 750, 1500, 2250), 
+                     limits = c(0, 2600)) +
+  scale_x_continuous(expand = c(0, 0), breaks = c(0, 2, 4, 6, 8, 10), 
+                     limits = c(-0.5, 10.5)) +
+  theme(panel.background = element_blank(),         
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA),
+        legend.position = "none", 
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 14)) +
+  labs (x = "Word Difficulty", y = "Response Time") 
+```
+
+Save the figure
+```{r}
+ggsave("random_slopes.png", units = "in", width = 9, height = 6, dpi = 300)
+```
